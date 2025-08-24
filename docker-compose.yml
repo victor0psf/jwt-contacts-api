@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: postgres_gc
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # se NÃO quiser expor o banco pro host, remova as 2 linhas abaixo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gerenciador_contatos"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./gerenciador-contatos # sua pasta com o .csproj e o Dockerfile
+      dockerfile: Dockerfile
+    container_name: api-gc
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+
+      # JWT (usa notação __ para chaves aninhadas)
+      Jwt__Key: ${JWT_KEY}
+      Jwt__Issuer: gerenciador-contatos
+      Jwt__Audience: gerenciador-contatos
+      Jwt__ExpiresMinutes: 120
+
+      ConnectionStrings__DefaultConnection: >-
+        Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
+        Pooling=true;Minimum Pool Size=0;Maximum Pool Size=50
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    # Se um dia precisar volumes aqui, use SEMPRE como lista:
+    # volumes:
+    #   - ./docker:/app
+
+volumes:
+  postgres_data:

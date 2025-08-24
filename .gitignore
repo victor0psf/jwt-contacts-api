@@ -1,0 +1,41 @@
+# --- Build / bin / obj ---
+bin/
+obj/
+out/
+build/
+[Bb]uild/
+[Bb]in/
+[Oo]bj/
+
+# --- Rider / VS / VSCode ---
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# --- Logs / Temp ---
+*.log
+*.tlog
+*.tmp
+*.temp
+*.bak
+*.swp
+*.DS_Store
+
+# --- Configurações secretas ---
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.json
+# mantém apenas o appsettings.json base (sem secrets)
+
+# --- Docker ---
+docker-compose.override.yml
+*.pid
+*.seed
+*.tar
+*.lock
+.env
+.env.*
+!.env.example
