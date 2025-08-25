@@ -1,6 +1,5 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -8,7 +7,7 @@ using gerenciador_contatos.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Controllers
+// --- Controllers ---
 builder.Services.AddControllers();
 
 // --- Swagger (Swashbuckle) + Botão Authorize (Bearer) ---
@@ -27,29 +26,17 @@ builder.Services.AddSwaggerGen(c =>
         BearerFormat = "JWT",
         Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
     };
+
     c.AddSecurityDefinition("Bearer", bearer);
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement { { bearer, Array.Empty<string>() } });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        { bearer, Array.Empty<string>() }
+    });
 });
 
 // --- DB (Postgres) ---
 var cs = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(opt => opt.UseNpgsql(cs));
-
-// --- Identity (usuários, senhas e lockout amigável p/ testes) ---
-builder.Services
-    .AddIdentityCore<IdentityUser>(opt =>
-    {
-        opt.Password.RequiredLength = 8;
-        opt.Password.RequireDigit = false;
-        opt.Password.RequireUppercase = false;
-        opt.Password.RequireNonAlphanumeric = false;
-
-        // Evita bloquear usuário rapidamente em testes
-        opt.Lockout.AllowedForNewUsers = false;
-    })
-    .AddRoles<IdentityRole>()
-    .AddEntityFrameworkStores<AppDbContext>()
-    .AddSignInManager();
 
 // --- JWT ---
 var issuer = builder.Configuration["Jwt:Issuer"];
@@ -81,14 +68,9 @@ builder.Services.AddAuthorization(opts =>
         .Build();
 });
 
-// --- CORS liberado p/ testes (ajuste depois) ---
-builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
-    p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()
-));
-
 var app = builder.Build();
 
-// Swagger UI (ligado sempre – pode restringir a Development se quiser)
+// --- Swagger UI ---
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -99,14 +81,13 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// HTTPS -> opcional no container (remova se não usa certificados)
+// --- HTTPS (opcional em container) ---
 app.UseHttpsRedirection();
 
-app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// --- Migra o banco automaticamente ao subir (Identity + suas entidades) ---
+// --- Migra o banco automaticamente ao subir ---
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

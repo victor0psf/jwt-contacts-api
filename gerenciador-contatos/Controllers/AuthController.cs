@@ -1,11 +1,13 @@
-using System.IdentityModel.Tokens.Jwt;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text;
+using gerenciador_contatos.Data;
 using gerenciador_contatos.Models;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
+
 
 namespace gerenciador_contatos.Controllers
 {
@@ -13,43 +15,46 @@ namespace gerenciador_contatos.Controllers
     [Route("api/auth")]
     public class AuthController : ControllerBase
     {
-        private readonly UserManager<IdentityUser> _users;
-        private readonly SignInManager<IdentityUser> _signIn;
+        private readonly AppDbContext _dbContext;
         private readonly IConfiguration _cfg;
         private readonly ILogger<AuthController> _logger;
 
         public AuthController(
-            UserManager<IdentityUser> users,
-            SignInManager<IdentityUser> signIn,
             IConfiguration cfg,
-            ILogger<AuthController> logger)
+            ILogger<AuthController> logger,
+            AppDbContext dbContext)
         {
-            _users = users;
-            _signIn = signIn;
             _cfg = cfg;
             _logger = logger;
+            _dbContext = dbContext;
         }
 
         [AllowAnonymous]
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisteViewModel registerModel)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
             try
             {
-                var user = new IdentityUser
+                var email = registerModel.Email.Trim().ToLowerInvariant();
+                var existingUser = await _dbContext.Users.AnyAsync(u => u.Email == email);
+                if (existingUser)
+                    return BadRequest(new { Message = "User with this email already exists" });
+
+                var user = new UserModel
                 {
-                    UserName = registerModel.Email,
-                    Email = registerModel.Email
+                    Name = registerModel.Name.Trim(),
+                    Email = registerModel.Email,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerModel.Password)
                 };
-
-                var result = await _users.CreateAsync(user, registerModel.Password);
-                if (!result.Succeeded)
-                    return BadRequest(result.Errors.Select(e => e.Description));
-
-                await _users.AddClaimAsync(user, new Claim("name", registerModel.Name));
+                _dbContext.Users.Add(user);
+                await _dbContext.SaveChangesAsync();
 
                 _logger.LogInformation("User {Email} registered", registerModel.Email);
-                return StatusCode(201, new { Message = "User registered successfully" });
+                return CreatedAtAction(nameof(Register), new { id = user.Id },
+                new { user.Id, user.Name, user.Email });
             }
             catch (Exception ex)
             {
@@ -62,20 +67,15 @@ namespace gerenciador_contatos.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginViewModel loginModel)
         {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
             try
             {
-                var user = await _users.FindByEmailAsync(loginModel.Email);
-                if (user == null)
+                var email = loginModel.Email.Trim().ToLowerInvariant();
+                var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == email);
+                if (user == null || !BCrypt.Net.BCrypt.Verify(loginModel.Password, user.PasswordHash))
                 {
                     return Unauthorized(new { Message = "Invalid email or password" });
-                }
-
-                var passwordResult = await _signIn.CheckPasswordSignInAsync(
-                    user, loginModel.Password, lockoutOnFailure: true
-                    );
-                if (!passwordResult.Succeeded)
-                {
-                    return Unauthorized(new { error = "Invalid credentials" });
                 }
 
                 var token = await GenerateJwtAsync(user);
@@ -97,20 +97,17 @@ namespace gerenciador_contatos.Controllers
             return Ok(new { sub, name, email });
         }
 
-        private async Task<string> GenerateJwtAsync(IdentityUser user)
+        private Task<string> GenerateJwtAsync(UserModel user)
         {
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_cfg["Jwt:Key"]!));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var claims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, user.Id),
-            new(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Email, user.Email ),
+            new("name", user.Name ),
         };
-
-            // adiciona claims do usuário (inclui "name")
-            claims.AddRange(await _users.GetClaimsAsync(user));
 
             var token = new JwtSecurityToken(
                 issuer: _cfg["Jwt:Issuer"],
@@ -119,7 +116,7 @@ namespace gerenciador_contatos.Controllers
                 expires: DateTime.UtcNow.AddDays(7),
                 signingCredentials: creds);
 
-            return new JwtSecurityTokenHandler().WriteToken(token);
+            return Task.FromResult(new JwtSecurityTokenHandler().WriteToken(token));
         }
 
     }
