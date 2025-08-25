@@ -78,5 +78,52 @@ namespace gerenciador_contatos.Controllers
                 return StatusCode(500, "Internal server error");
             }
         }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteListContact(Guid id)
+        {
+            try
+            {
+                var contact = await _context.ListContacts.FindAsync(id);
+                if (contact == null)
+                    return NotFound("Contact not found");
+
+                _context.ListContacts.Remove(contact);
+                await _context.SaveChangesAsync();
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting contact with ID {Id}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpPatch("{id}")]
+        public async Task<IActionResult> UpdateListContact(Guid id, [FromBody] ListContactsModel contactsModel)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState.Values.SelectMany(e => e.Errors).Select(e => e.ErrorMessage));
+
+            try
+            {
+                var contact = await _context.ListContacts.FindAsync(id);
+                if (contact == null)
+                    return NotFound("Contact not found");
+
+                contact.Name = contactsModel.Name;
+                contact.Telephone = contactsModel.Telephone;
+                contact.Email = contactsModel.Email;
+
+                _context.ListContacts.Update(contact);
+                await _context.SaveChangesAsync();
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating contact with ID {Id}", id);
+                return StatusCode(500, "Internal server error");
+            }
+        }
     }
 }
