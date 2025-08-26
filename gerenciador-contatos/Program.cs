@@ -81,7 +81,6 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// --- HTTPS (opcional em container) ---
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
