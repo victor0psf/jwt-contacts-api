@@ -41,9 +41,6 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
-    # Se um dia precisar volumes aqui, use SEMPRE como lista:
-    # volumes:
-    #   - ./docker:/app
 
 volumes:
   postgres_data:
